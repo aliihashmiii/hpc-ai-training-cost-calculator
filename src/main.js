@@ -1,4 +1,4 @@
-import { calculate, PHASES, toKWh } from './calc.js';
+import { calculate, PHASES, toKWh } from './calc.js?ui=greenpixie-inspired-v2';
 
 const $ = selector => document.querySelector(selector);
 const form = $('#calculator-form');
@@ -21,9 +21,9 @@ mountPhaseInputs();
 function readInput() {
   return {
     tariff: number('#tariff'), pue: number('#pue'),
-    cpuEnergy: $('#cpu-energy').value, cpuUnit: $('#cpu-unit').value,
-    gpuEnergy: $('#gpu-energy').value, gpuUnit: $('#gpu-unit').value,
-    totalEnergy: $('#total-energy-input').value, totalUnit: $('#total-unit').value,
+    cpuEnergy: $('#cpu-energy').value, cpuUnit: $('#cpu-unit').value, cpuStatus: $('#cpu-status').value,
+    gpuEnergy: $('#gpu-energy').value, gpuUnit: $('#gpu-unit').value, gpuStatus: $('#gpu-status').value,
+    totalEnergy: $('#total-energy-input').value, totalUnit: $('#total-unit').value, totalStatus: $('#total-status').value,
     model: $('#model').value.trim() || 'Unnamed model', dataset: $('#dataset').value.trim() || 'Unnamed dataset',
     runId: $('#run-id').value.trim(), user: $('#user').value.trim() || 'Unassigned',
     gpuCount: number('#gpu-count'), runCount: number('#run-count'), epochs: number('#epochs'), datasetSize: number('#dataset-size'),
@@ -55,7 +55,7 @@ function validate() {
   });
   $('#validation-message').textContent = valid ? '' : `Results below are stale until corrected. ${errors[0] || 'Check the highlighted value.'}`;
   $('#validation-message').hidden = valid;
-  $('#summary-section').classList.toggle('is-stale', !valid);
+  $('.summary-grid').classList.toggle('is-stale', !valid);
   $('.results-column').classList.toggle('is-stale', !valid);
   return valid;
 }
@@ -74,7 +74,7 @@ function render() {
     $('#cost-per-run').textContent = euro(result.perRunCost);
     $('#runs-context').textContent = `${result.runCount} ${result.runCount === 1 ? 'training run' : 'training runs'}`;
     $('#cost-per-epoch').textContent = euro(result.perEpochCost);
-    $('#epochs-context').textContent = `${result.epochs} epochs per run · based on measured job total`;
+    $('#epochs-context').textContent = `${result.epochs} epochs per run · using job-total basis`;
 
     $('#it-energy').textContent = result.totalKWh.toFixed(3);
     $('#cpu-display').textContent = kwh(result.cpuKWh);
@@ -87,10 +87,10 @@ function render() {
     $('#energy-donut .donut-cpu').style.strokeDashoffset = '0';
     $('#energy-donut .donut-gpu').style.strokeDasharray = measuredSplit ? `${circumference * (1 - cpuFraction)} ${circumference}` : `0 ${circumference}`;
     $('#energy-donut .donut-gpu').style.strokeDashoffset = `${-circumference * cpuFraction}`;
-    let note = `${result.measurementBasis} used for job total. `;
+    let note = `${result.measurementBasis} used for job total. CPU: ${input.cpuStatus.toLowerCase()}; GPU: ${input.gpuStatus.toLowerCase()}. `;
     note += result.measurementBasis === 'Explicit total energy measurement'
-      ? 'CPU/GPU component costs are shown separately and may not reconcile to this override.'
-      : (result.cpuSupplied || result.gpuSupplied ? 'CPU/GPU readings form job total; phase values are an independent attribution breakdown.' : 'Phase values are used as job-total basis.');
+      ? `Total source: ${input.totalStatus.toLowerCase()}. CPU/GPU component costs are shown separately and may not reconcile to this override.`
+      : (result.cpuSupplied || result.gpuSupplied ? 'CPU/GPU component values form job total; phase values are an independent attribution breakdown.' : 'Phase values are used as job-total basis.');
     if (result.estimatedEnergyMismatch) note += ' Phase sum differs from CPU + GPU readings; investigate before audit.';
     if (result.componentMismatch) note += ' Explicit total differs from CPU + GPU component readings; investigate before audit.';
     $('#measurement-note-text').textContent = note;
@@ -111,6 +111,7 @@ function render() {
     $('#current-compare-cost').textContent = euro(result.totalCost);
     $('#current-compare-energy').textContent = `${result.totalKWh.toFixed(3)} kWh · ${result.measurementBasis.toLowerCase()}`;
     $('#alternative-label').textContent = input.compareLabel;
+    $('.alt-label-mirror').textContent = input.compareLabel;
     $('#alternative-compare-cost').textContent = euro(compareCost);
     $('#alternative-compare-energy').textContent = `${comparisonKWh.toFixed(3)} kWh alternate energy`;
     const delta = compareCost - result.totalCost;
@@ -154,6 +155,9 @@ function downloadCsv() {
     ['Job IT energy (kWh)', result.totalKWh],
     ['Job facility energy (kWh; includes PUE)', result.facilityKWh],
     ['Job electricity cost (EUR)', result.totalCost],
+    ['CPU energy source', input.cpuStatus],
+    ['GPU energy source', input.gpuStatus],
+    ...(input.totalEnergy !== '' ? [['Explicit total energy source', input.totalStatus]] : []),
     ['CPU + GPU component energy (IT kWh)', result.cpuGpuSum],
     ['Job total minus CPU + GPU components (IT kWh; reconciliation difference)', result.totalKWh - result.cpuGpuSum],
     ['Phase-attributed energy subtotal (IT kWh)', result.phaseTotalKWh],
@@ -173,8 +177,9 @@ function downloadCsv() {
 function reset() {
   $('#tariff').value = sample.tariff; $('#pue').value = sample.pue;
   $('#cpu-energy').value = sample.cpu; $('#cpu-unit').value = 'J';
-  $('#gpu-energy').value = sample.gpu; $('#gpu-unit').value = 'J';
-  $('#total-energy-input').value = ''; $('#total-unit').value = 'J';
+  $('#cpu-status').value = 'Illustrative estimate';
+  $('#gpu-energy').value = sample.gpu; $('#gpu-unit').value = 'J'; $('#gpu-status').value = 'Illustrative estimate';
+  $('#total-energy-input').value = ''; $('#total-unit').value = 'J'; $('#total-status').value = 'Illustrative estimate';
   $('#model').value = sample.model; $('#dataset').value = sample.dataset; $('#run-id').value = sample.runId;
   $('#user').value = sample.user; $('#gpu-count').value = sample.gpuCount; $('#run-count').value = sample.runCount;
   $('#epochs').value = sample.epochs; $('#dataset-size').value = sample.datasetSize;

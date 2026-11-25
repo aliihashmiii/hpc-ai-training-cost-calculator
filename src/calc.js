@@ -34,7 +34,7 @@ const positiveInteger = (value, name) => {
   return n;
 };
 
-/** Pure calculation function. Energy inputs are IT-meter readings, before PUE. */
+/** Pure calculation function. Energy inputs are IT energy before PUE; provenance is tracked by the interface. */
 export function calculate(input) {
   const tariff = finiteNonNegative(input.tariff, 'Electricity tariff');
   const pue = positive(input.pue, 'PUE');
@@ -82,7 +82,7 @@ export function calculate(input) {
   const primaryPhases = phaseRows.filter(row => row.group === 'Execution');
   const biggestPhase = primaryPhases.reduce((best, row) => row.energyKWh > (best?.energyKWh ?? -1) ? row : best, null);
   const cpuGpuSum = cpuKWh + gpuKWh;
-  const measurementBasis = explicitTotal ? 'Explicit total energy measurement' : (cpuSupplied || gpuSupplied ? 'CPU + GPU meter readings' : 'Sum of phase entries');
+  const measurementBasis = explicitTotal ? 'Explicit total energy measurement' : (cpuSupplied || gpuSupplied ? 'CPU + GPU component entries' : 'Sum of phase entries');
   return {
     tariff, pue, cpuKWh, gpuKWh, cpuSupplied, gpuSupplied, totalKWh, facilityKWh,
     totalCost, cpuCost, gpuCost, phaseRows, phaseTotalKWh, prepKWh, prepCost, prepShare,
