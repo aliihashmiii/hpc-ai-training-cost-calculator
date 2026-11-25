@@ -1,37 +1,102 @@
-import { calculate, PHASES, toKWh } from './calc.js?ui=greenpixie-inspired-v2';
+import { calculate, PHASES, toKWh } from './calc.js';
+import { buildFocusCsv } from './focus.js';
 
 const $ = selector => document.querySelector(selector);
 const form = $('#calculator-form');
-const euro = value => new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0);
+const euro = value => new Intl.NumberFormat('en-IE', {
+  style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2,
+}).format(Number.isFinite(value) ? value : 0);
 const kwh = value => `${Number(value || 0).toFixed(3)} kWh`;
-const number = (selector, fallback = 0) => { const raw = $(selector).value; return raw === '' ? fallback : Number(raw); };
+const number = (selector, fallback = 0) => {
+  const raw = $(selector).value;
+  return raw === '' ? fallback : Number(raw);
+};
+const mode = () => $('input[name="mode"]:checked').value;
 
 const sample = {
-  tariff: '0.24', pue: '1.35', cpu: '54000000', gpu: '144000000', model: 'ResNet-50', dataset: 'ImageNet-1K',
-  runId: 'resnet50-2025-001', user: 'Research group', gpuCount: '4', runCount: '1', epochs: '20', datasetSize: '138',
-  prepEnergy: '36000000', sharingUsers: '6', downloads: '12', usageShare: '20', compareEnergy: '180000000',
-  phases: Object.fromEntries(PHASES.map(p => [p.id, p.sampleJ])),
+  tariff: '0.24', pue: '1.35', total: '198000000', cpu: '54000000', gpu: '144000000',
+  model: 'ResNet-50', dataset: 'ImageNet-1K', runId: 'resnet50-2025-001', user: 'Research group',
+  gpuCount: '4', runCount: '1', epochs: '20', datasetSize: '138', prepEnergy: '36000000',
+  sharingUsers: '6', downloads: '12', usageShare: '20', compareCurrent: '198000000',
+  compareEnergy: '180000000', phases: Object.fromEntries(PHASES.map(phase => [phase.id, phase.sampleJ])),
 };
 
 function mountPhaseInputs() {
-  $('#phase-inputs').innerHTML = PHASES.map(phase => `<div class="phase-row"><label class="phase-name" for="phase-${phase.id}">${phase.label}<small>${phase.group.toUpperCase()}</small></label><span class="phase-controls"><input id="phase-${phase.id}" data-phase="${phase.id}" type="number" min="0" step="any" value="${sample.phases[phase.id]}" inputmode="decimal" aria-label="${phase.label} energy" /><select data-phase-unit="${phase.id}" aria-label="${phase.label} unit"><option value="J">J</option><option value="kWh">kWh</option></select><select data-phase-status="${phase.id}" aria-label="${phase.label} data status"><option>Illustrative estimate</option><option>Manual estimate</option><option>Measured</option></select></span></div>`).join('');
+  $('#phase-inputs').innerHTML = PHASES.map(phase => `
+    <div class="phase-row">
+      <label class="phase-name" for="phase-${phase.id}">${phase.label}<small>${phase.group.toUpperCase()}</small></label>
+      <span class="phase-controls">
+        <input id="phase-${phase.id}" data-phase="${phase.id}" type="number" min="0" step="any" value="${sample.phases[phase.id]}" inputmode="decimal" aria-label="${phase.label} energy" />
+        <select data-phase-unit="${phase.id}" aria-label="${phase.label} unit"><option value="J">J</option><option value="kWh">kWh</option></select>
+        <select data-phase-status="${phase.id}" aria-label="${phase.label} data status"><option>Illustrative estimate</option><option>Manual estimate</option><option>Measured</option></select>
+      </span>
+    </div>`).join('');
 }
 mountPhaseInputs();
 
 function readInput() {
+  const selectedMode = mode();
+  const componentOverride = selectedMode === 'components' && $('#component-total-details').open && $('#component-total-input').value !== '';
+  const totalEnergy = selectedMode === 'total'
+    ? $('#total-energy-input').value
+    : selectedMode === 'compare'
+      ? $('#compare-current-energy').value
+      : componentOverride ? $('#component-total-input').value : '';
+  const totalUnit = selectedMode === 'total'
+    ? $('#total-unit').value
+    : selectedMode === 'compare'
+      ? $('#compare-current-unit').value
+      : componentOverride ? $('#component-total-unit').value : 'J';
+  const phaseValues = selectedMode === 'phases'
+    ? Object.fromEntries(PHASES.map(phase => [phase.id, {
+      value: $(`[data-phase="${phase.id}"]`).value,
+      unit: $(`[data-phase-unit="${phase.id}"]`).value,
+      status: $(`[data-phase-status="${phase.id}"]`).value,
+    }]))
+    : {};
+  const compareEnergy = $('#compare-energy').value;
+  const compareUnit = $('#compare-unit').value;
   return {
-    tariff: number('#tariff'), pue: number('#pue'),
-    cpuEnergy: $('#cpu-energy').value, cpuUnit: $('#cpu-unit').value, cpuStatus: $('#cpu-status').value,
-    gpuEnergy: $('#gpu-energy').value, gpuUnit: $('#gpu-unit').value, gpuStatus: $('#gpu-status').value,
-    totalEnergy: $('#total-energy-input').value, totalUnit: $('#total-unit').value, totalStatus: $('#total-status').value,
-    model: $('#model').value.trim() || 'Unnamed model', dataset: $('#dataset').value.trim() || 'Unnamed dataset',
-    runId: $('#run-id').value.trim(), user: $('#user').value.trim() || 'Unassigned',
-    gpuCount: number('#gpu-count'), runCount: number('#run-count'), epochs: number('#epochs'), datasetSize: number('#dataset-size'),
-    phases: Object.fromEntries(PHASES.map(p => [p.id, { value: $(`[data-phase="${p.id}"]`).value, unit: $(`[data-phase-unit="${p.id}"]`).value, status: $(`[data-phase-status="${p.id}"]`).value }])),
-    allocationEnabled: $('#allocation-enabled').checked, prepEnergy: $('#prep-energy').value, prepUnit: $('#prep-unit').value,
-    sharingUsers: number('#sharing-users'), downloads: number('#downloads'), allocationMethod: $('#allocation-method').value,
-    usageShare: number('#usage-share'), compareEnergy: $('#compare-energy').value, compareUnit: $('#compare-unit').value,
-    compareLabel: $('#compare-label').value, compareTariff: $('#compare-tariff').value,
+    mode: selectedMode,
+    tariff: number('#tariff'),
+    pue: number('#pue', 1),
+    cpuEnergy: selectedMode === 'components' ? $('#cpu-energy').value : '',
+    cpuUnit: $('#cpu-unit').value,
+    cpuStatus: $('#cpu-status').value,
+    gpuEnergy: selectedMode === 'components' ? $('#gpu-energy').value : '',
+    gpuUnit: $('#gpu-unit').value,
+    gpuStatus: $('#gpu-status').value,
+    totalEnergy,
+    totalUnit,
+    totalStatus: selectedMode === 'components' && componentOverride
+      ? $('#component-total-status').value
+      : selectedMode === 'total' ? $('#total-status').value : 'Manual estimate',
+    model: $('#model').value.trim() || 'Unnamed model',
+    dataset: $('#dataset').value.trim() || 'Unnamed dataset',
+    runId: $('#run-id').value.trim(),
+    user: $('#user').value.trim() || 'Unassigned',
+    gpuCount: number('#gpu-count', 1),
+    runCount: number('#run-count', 1),
+    epochs: number('#epochs', 1),
+    datasetSize: number('#dataset-size'),
+    phases: phaseValues,
+    allocationEnabled: $('#allocation-enabled').checked,
+    prepEnergy: $('#prep-energy').value,
+    prepUnit: $('#prep-unit').value,
+    sharingUsers: number('#sharing-users', 1),
+    downloads: number('#downloads', 1),
+    allocationMethod: $('#allocation-method').value,
+    usageShare: number('#usage-share', 0),
+    compareEnergy,
+    compareUnit,
+    compareKWh: compareEnergy === '' ? 0 : toKWh(compareEnergy, compareUnit),
+    compareCurrentEnergy: selectedMode === 'compare' ? $('#compare-current-energy').value : '',
+    compareCurrentUnit: $('#compare-current-unit').value,
+    compareCurrentKWh: selectedMode === 'compare'
+      ? toKWh($('#compare-current-energy').value || 0, $('#compare-current-unit').value)
+      : 0,
+    compareLabel: $('#compare-label').value,
+    compareTariff: $('#compare-tariff').value,
   };
 }
 
@@ -39,18 +104,21 @@ function validate() {
   let valid = true;
   const wholeNumberFields = new Set(['gpu-count', 'run-count', 'epochs', 'sharing-users', 'downloads']);
   const errors = [];
-  form.querySelectorAll('[aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
-  form.querySelectorAll('input[type="number"]').forEach(el => {
-    if (el.closest('[hidden]')) return;
-    const val = el.value === '' ? null : Number(el.value);
-    const min = Number(el.min || 0);
-    const max = el.max === '' ? Infinity : Number(el.max);
-    const badRange = (val === null && min > 0) || (val !== null && (!Number.isFinite(val) || val < min || val > max));
-    const badWhole = val !== null && wholeNumberFields.has(el.id) && !Number.isInteger(val);
-    const badStep = val !== null && !wholeNumberFields.has(el.id) && el.step && el.step !== 'any' && Number.isFinite(val) && Math.abs((val - min) / Number(el.step) - Math.round((val - min) / Number(el.step))) > 1e-8;
+  form.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
+  form.querySelectorAll('input[type="number"]').forEach(element => {
+    if (element.closest('[hidden]') || element.closest('details:not([open])')) return;
+    const value = element.value === '' ? null : Number(element.value);
+    const min = Number(element.min || 0);
+    const max = element.max === '' ? Infinity : Number(element.max);
+    const badRange = (value === null && min > 0) || (value !== null && (!Number.isFinite(value) || value < min || value > max));
+    const badWhole = value !== null && wholeNumberFields.has(element.id) && !Number.isInteger(value);
+    const badStep = value !== null && !wholeNumberFields.has(element.id) && element.step && element.step !== 'any'
+      && Number.isFinite(value) && Math.abs((value - min) / Number(element.step) - Math.round((value - min) / Number(element.step))) > 1e-8;
     if (badRange || badWhole || badStep) {
-      el.setAttribute('aria-invalid', 'true'); valid = false;
-      errors.push(`${el.getAttribute('aria-label') || el.closest('.field')?.querySelector(':scope > span')?.textContent.trim() || el.name || 'A number field'}: ${badWhole ? 'enter a whole number' : badRange ? `enter a value from ${min}${Number.isFinite(max) ? ` to ${max}` : ''}` : `use increments of ${el.step}`}.`);
+      element.setAttribute('aria-invalid', 'true');
+      valid = false;
+      const label = element.getAttribute('aria-label') || element.closest('.field')?.querySelector(':scope > span')?.textContent.trim() || element.name || 'A number field';
+      errors.push(`${label}: ${badWhole ? 'enter a whole number' : badRange ? `enter a value from ${min}${Number.isFinite(max) ? ` to ${max}` : ''}` : `use increments of ${element.step}`}.`);
     }
   });
   $('#validation-message').textContent = valid ? '' : `Results below are stale until corrected. ${errors[0] || 'Check the highlighted value.'}`;
@@ -60,9 +128,21 @@ function validate() {
   return valid;
 }
 
-function render() {
+function syncModeUi() {
+  const selectedMode = mode();
+  document.querySelectorAll('[data-mode-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.modePanel !== selectedMode;
+  });
+  $('#energy-card').hidden = selectedMode !== 'components';
+  $('#breakdown').hidden = selectedMode !== 'phases';
+  $('#comparison-card').hidden = selectedMode !== 'compare';
+  $('#allocation-fields').hidden = !$('#allocation-enabled').checked;
+  $('#allocation-result-card').hidden = !$('#allocation-enabled').checked;
   $('#usage-share-field').hidden = $('#allocation-method').value !== 'usage';
-  $('.allocation-fields').hidden = !$('#allocation-enabled').checked;
+}
+
+function render() {
+  syncModeUi();
   if (!validate()) return;
   try {
     const input = readInput();
@@ -74,121 +154,138 @@ function render() {
     $('#cost-per-run').textContent = euro(result.perRunCost);
     $('#runs-context').textContent = `${result.runCount} ${result.runCount === 1 ? 'training run' : 'training runs'}`;
     $('#cost-per-epoch').textContent = euro(result.perEpochCost);
-    $('#epochs-context').textContent = `${result.epochs} epochs per run · using job-total basis`;
+    $('#epochs-context').textContent = `${result.epochs} epochs per run`;
 
     $('#it-energy').textContent = result.totalKWh.toFixed(3);
     $('#cpu-display').textContent = kwh(result.cpuKWh);
     $('#gpu-display').textContent = kwh(result.gpuKWh);
     $('#facility-display').textContent = kwh(result.facilityKWh);
     const circumference = 2 * Math.PI * 59;
-    const measuredSplit = result.cpuKWh + result.gpuKWh;
-    const cpuFraction = measuredSplit ? result.cpuKWh / measuredSplit : 0;
-    $('#energy-donut .donut-cpu').style.strokeDasharray = measuredSplit ? `${circumference * cpuFraction} ${circumference}` : `0 ${circumference}`;
+    const componentTotal = result.cpuKWh + result.gpuKWh;
+    const cpuFraction = componentTotal ? result.cpuKWh / componentTotal : 0;
+    $('#energy-donut .donut-cpu').style.strokeDasharray = componentTotal ? `${circumference * cpuFraction} ${circumference}` : `0 ${circumference}`;
     $('#energy-donut .donut-cpu').style.strokeDashoffset = '0';
-    $('#energy-donut .donut-gpu').style.strokeDasharray = measuredSplit ? `${circumference * (1 - cpuFraction)} ${circumference}` : `0 ${circumference}`;
+    $('#energy-donut .donut-gpu').style.strokeDasharray = componentTotal ? `${circumference * (1 - cpuFraction)} ${circumference}` : `0 ${circumference}`;
     $('#energy-donut .donut-gpu').style.strokeDashoffset = `${-circumference * cpuFraction}`;
-    let note = `${result.measurementBasis} used for job total. CPU: ${input.cpuStatus.toLowerCase()}; GPU: ${input.gpuStatus.toLowerCase()}. `;
-    note += result.measurementBasis === 'Explicit total energy measurement'
-      ? `Total source: ${input.totalStatus.toLowerCase()}. CPU/GPU component costs are shown separately and may not reconcile to this override.`
-      : (result.cpuSupplied || result.gpuSupplied ? 'CPU/GPU component values form job total; phase values are an independent attribution breakdown.' : 'Phase values are used as job-total basis.');
-    if (result.estimatedEnergyMismatch) note += ' Phase sum differs from CPU + GPU readings; investigate before audit.';
-    if (result.componentMismatch) note += ' Explicit total differs from CPU + GPU component readings; investigate before audit.';
-    $('#measurement-note-text').textContent = note;
+    let measurementNote = `${result.measurementBasis} used for the job total. CPU: ${input.cpuStatus.toLowerCase()}; GPU: ${input.gpuStatus.toLowerCase()}.`;
+    if (result.componentMismatch) measurementNote += ' The total meter differs from CPU + GPU; check the readings.';
+    $('#measurement-note-text').textContent = measurementNote;
 
-    const chartRows = result.phaseRows;
-    const maxCost = Math.max(...chartRows.map(x => x.cost), 0);
-    $('#phase-chart').innerHTML = chartRows.map(row => `<div class="chart-row"><span class="chart-label" title="${row.label}">${row.label}</span><span class="chart-track"><i class="chart-bar" style="width:${maxCost ? Math.max(row.cost / maxCost * 100, row.cost > 0 ? 1 : 0) : 0}%"></i></span><span class="chart-value">${euro(row.cost)}</span></div>`).join('');
-    $('#phase-table-body').innerHTML = chartRows.map(row => `<tr><td>${row.label}</td><td>${row.energyKWh.toFixed(5)}</td><td>${euro(row.cost)}</td><td>${row.energyKWh ? row.status : 'Not entered'}</td></tr>`).join('');
-    const biggest = result.biggestPhase;
-    $('#largest-phase').textContent = biggest && biggest.energyKWh > 0 ? biggest.label : 'No phase energy entered';
-    $('#largest-phase-note').textContent = biggest && biggest.energyKWh > 0 ? `${biggest.energyKWh.toFixed(3)} kWh · execution phase` : 'Enter phase values for attribution';
-    $('#largest-phase-cost').textContent = euro(biggest?.cost || 0);
+    const phaseRows = result.phaseRows;
+    const maxCost = Math.max(...phaseRows.map(row => row.cost), 0);
+    $('#phase-chart').innerHTML = phaseRows.map(row => `
+      <div class="chart-row"><span class="chart-label" title="${row.label}">${row.label}</span>
+      <span class="chart-track"><i class="chart-bar" style="width:${maxCost ? Math.max(row.cost / maxCost * 100, row.cost > 0 ? 1 : 0) : 0}%"></i></span>
+      <span class="chart-value">${euro(row.cost)}</span></div>`).join('');
+    $('#phase-table-body').innerHTML = phaseRows.map(row => `<tr><td>${row.label}</td><td>${row.energyKWh.toFixed(5)}</td><td>${euro(row.cost)}</td><td>${row.energyKWh ? row.status : 'Not entered'}</td></tr>`).join('');
+    const largest = result.biggestPhase;
+    $('#largest-phase').textContent = largest && largest.energyKWh > 0 ? largest.label : 'No phase energy entered';
+    $('#largest-phase-note').textContent = largest && largest.energyKWh > 0 ? `${largest.energyKWh.toFixed(3)} kWh · execution phase` : 'Enter phase values for attribution';
+    $('#largest-phase-cost').textContent = euro(largest?.cost || 0);
 
-    const comparisonKWh = input.compareEnergy === '' ? 0 : toKWh(input.compareEnergy, input.compareUnit);
     const compareTariff = input.compareTariff === '' ? result.tariff : Number(input.compareTariff);
-    const compareCost = comparisonKWh * result.pue * compareTariff;
+    const alternativeCost = input.compareKWh * result.pue * compareTariff;
     $('#current-label').textContent = `${input.model} · ${input.dataset}`;
     $('#current-compare-cost').textContent = euro(result.totalCost);
-    $('#current-compare-energy').textContent = `${result.totalKWh.toFixed(3)} kWh · ${result.measurementBasis.toLowerCase()}`;
+    $('#current-compare-energy').textContent = `${result.totalKWh.toFixed(3)} kWh · current`;
     $('#alternative-label').textContent = input.compareLabel;
     $('.alt-label-mirror').textContent = input.compareLabel;
-    $('#alternative-compare-cost').textContent = euro(compareCost);
-    $('#alternative-compare-energy').textContent = `${comparisonKWh.toFixed(3)} kWh alternate energy`;
-    const delta = compareCost - result.totalCost;
-    const deltaEl = $('#comparison-delta');
-    deltaEl.className = 'comparison-delta';
-    if (!comparisonKWh) deltaEl.textContent = 'Enter alternative energy to compare electricity cost.';
-    else if (Math.abs(delta) < 0.005) deltaEl.textContent = 'Both configurations have approximately equal electricity cost.';
-    else { deltaEl.classList.add(delta < 0 ? 'good' : 'bad'); const relative = result.totalCost > 0 ? ` (${(Math.abs(delta) / result.totalCost * 100).toFixed(1)}%)` : ''; deltaEl.textContent = `${input.compareLabel} ${delta < 0 ? 'saves' : 'costs'} ${euro(Math.abs(delta))}${relative} per compared job.`; }
+    $('#alternative-compare-cost').textContent = euro(alternativeCost);
+    $('#alternative-compare-energy').textContent = `${input.compareKWh.toFixed(3)} kWh · alternative`;
+    const difference = alternativeCost - result.totalCost;
+    const differenceElement = $('#comparison-delta');
+    differenceElement.className = 'comparison-delta';
+    if (input.compareEnergy === '') differenceElement.textContent = 'Enter alternative energy to compare costs.';
+    else if (Math.abs(difference) < 0.005) differenceElement.textContent = 'Both configurations have approximately equal estimated cost.';
+    else {
+      differenceElement.classList.add(difference < 0 ? 'good' : 'bad');
+      const relative = result.totalCost > 0 ? ` (${(Math.abs(difference) / result.totalCost * 100).toFixed(1)}%)` : '';
+      differenceElement.textContent = `${input.compareLabel} ${difference < 0 ? 'saves' : 'costs'} ${euro(Math.abs(difference))}${relative} per compared job.`;
+    }
 
-    $('#cpu-cost').textContent = euro(result.cpuCost);
-    $('#gpu-cost').textContent = euro(result.gpuCost);
     $('#prep-total-cost').textContent = euro(result.prepCost);
     $('#prep-user-cost').textContent = euro(result.prepShare);
     $('#prep-download-cost').textContent = euro(result.prepCostPerDownload);
     $('#training-user-cost').textContent = euro(result.trainingCostPerUser);
     $('#per-gpu-cost').textContent = euro(result.costPerGpu);
-    $('#allocation-cost').textContent = euro(result.prepShare);
-    const methodDescription = { equal: `equal allocation across ${result.sharingUsers} users`, usage: `${Math.min(100, input.usageShare)}% usage share`, owner: 'full cost assigned to dataset owner' }[result.allocationMethod];
+    const allocationDescription = {
+      equal: `equal allocation across ${result.sharingUsers} users`,
+      usage: `${Math.min(100, input.usageShare)}% usage share`,
+      owner: 'full cost assigned to dataset owner',
+    }[result.allocationMethod];
     $('#allocation-explainer').textContent = input.allocationEnabled
-      ? `Dataset preparation: ${result.prepKWh.toFixed(5)} IT kWh · ${input.downloads} downloads (${euro(result.prepCostPerDownload)} preparation cost per download) · ${methodDescription}. Training energy is attributed to ${input.user}; preparation allocation is shown separately.`
-      : 'Dataset preparation allocation is turned off. Training and preparation remain separate.';
+      ? `Preparation remains separate from training. ${input.downloads} downloads · ${euro(result.prepCostPerDownload)} per download · ${allocationDescription}.`
+      : '';
     $('#export-button').disabled = false;
   } catch (error) {
     $('#measurement-note-text').textContent = error.message;
+    $('#export-button').disabled = true;
   }
 }
 
-function csvCell(value) { const text = String(value ?? ''); return `"${text.replaceAll('"', '""')}"`; }
 function downloadCsv() {
-  if (!validate()) { form.querySelector('[aria-invalid="true"]')?.focus(); return; }
+  if (!validate()) {
+    form.querySelector('[aria-invalid="true"]')?.focus();
+    return;
+  }
   const input = readInput();
   const result = calculate(input);
-  const headers = ['BillingAccountName','BillingAccountId','ResourceName','ResourceType','UsageQuantity','UsageUnit','EnergyConsumed','EnergyUnit','ElectricityCost','BillingCurrency','TrainingPhase','Model','Dataset','TrainingRun','UserOrTeam','AllocationMethod','DataStatus','PUE','ElectricityTariffPerKWh','TrainingRunCount','DatasetSizeGB','NumberOfGPUs','DatasetDownloads'];
-  const rows = result.phaseRows.map(phase => [
-    'Research HPC', '', `${input.runId || 'training-job'} / ${phase.id}`, 'HPC training phase', phase.energyKWh * result.pue, 'kWh', phase.energyKWh, 'kWh', phase.cost, 'EUR', phase.label, input.model, input.dataset, input.runId, input.user, input.allocationMethod, phase.energyKWh ? phase.status : 'Not entered', result.pue, result.tariff, result.runCount, result.datasetSize, input.gpuCount, input.downloads,
-  ]);
-  if (result.prepKWh) rows.push(['Research HPC', '', `${input.dataset} / preparation`, 'Shared dataset preparation', result.prepKWh * result.pue, 'kWh', result.prepKWh, 'kWh', result.prepCost, 'EUR', 'Dataset preparation', input.model, input.dataset, input.runId, input.user, input.allocationMethod, 'Manually entered / illustrative', result.pue, result.tariff, result.runCount, result.datasetSize, input.gpuCount, input.downloads]);
-  const preface = [
-    ['Report type', 'FOCUS-compatible research export — not an officially validated FOCUS dataset'],
-    ['Job total energy basis', result.measurementBasis],
-    ['Job IT energy (kWh)', result.totalKWh],
-    ['Job facility energy (kWh; includes PUE)', result.facilityKWh],
-    ['Job electricity cost (EUR)', result.totalCost],
-    ['CPU energy source', input.cpuStatus],
-    ['GPU energy source', input.gpuStatus],
-    ...(input.totalEnergy !== '' ? [['Explicit total energy source', input.totalStatus]] : []),
-    ['CPU + GPU component energy (IT kWh)', result.cpuGpuSum],
-    ['Job total minus CPU + GPU components (IT kWh; reconciliation difference)', result.totalKWh - result.cpuGpuSum],
-    ['Phase-attributed energy subtotal (IT kWh)', result.phaseTotalKWh],
-    ['Phase-attributed electricity cost subtotal (EUR; may differ from the independent job-meter total)', result.phaseRows.reduce((sum, row) => sum + row.cost, 0)],
-    ['Job-total minus phase-attributed cost (EUR; reconciliation difference)', result.totalCost - result.phaseRows.reduce((sum, row) => sum + row.cost, 0)],
-    ['Dataset preparation allocation per user (EUR; separate from training)', result.prepShare],
-    [],
-  ].map(row => row.map(csvCell).join(',')).join('\r\n');
-  const csv = `${preface}\r\n${headers.map(csvCell).join(',')}\r\n${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}`;
-  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+  const csv = buildFocusCsv(input, result, input.mode);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `${(input.runId || 'hpc-training-cost').replace(/[^a-z0-9_-]+/gi, '-')}-focus-compatible.csv`;
-  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  const link = document.createElement('a');
+  const fileName = (input.runId || 'hpc-training-cost').replace(/[^a-z0-9_-]+/gi, '-');
+  link.href = url;
+  link.download = `${fileName}-focus-1.4-cost-and-usage.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function reset() {
-  $('#tariff').value = sample.tariff; $('#pue').value = sample.pue;
-  $('#cpu-energy').value = sample.cpu; $('#cpu-unit').value = 'J';
+  $('input[name="mode"][value="total"]').checked = true;
+  $('#tariff').value = sample.tariff;
+  $('#pue').value = sample.pue;
+  $('#total-energy-input').value = sample.total;
+  $('#total-unit').value = 'J';
+  $('#total-status').value = 'Illustrative estimate';
+  $('#cpu-energy').value = sample.cpu;
+  $('#cpu-unit').value = 'J';
   $('#cpu-status').value = 'Illustrative estimate';
-  $('#gpu-energy').value = sample.gpu; $('#gpu-unit').value = 'J'; $('#gpu-status').value = 'Illustrative estimate';
-  $('#total-energy-input').value = ''; $('#total-unit').value = 'J'; $('#total-status').value = 'Illustrative estimate';
-  $('#model').value = sample.model; $('#dataset').value = sample.dataset; $('#run-id').value = sample.runId;
-  $('#user').value = sample.user; $('#gpu-count').value = sample.gpuCount; $('#run-count').value = sample.runCount;
-  $('#epochs').value = sample.epochs; $('#dataset-size').value = sample.datasetSize;
-  for (const phase of PHASES) { $(`[data-phase="${phase.id}"]`).value = sample.phases[phase.id]; $(`[data-phase-unit="${phase.id}"]`).value = 'J'; $(`[data-phase-status="${phase.id}"]`).value = 'Illustrative estimate'; }
-  $('#allocation-enabled').checked = true; $('#prep-energy').value = sample.prepEnergy; $('#prep-unit').value = 'J';
-  $('#sharing-users').value = sample.sharingUsers; $('#downloads').value = sample.downloads;
-  $('#allocation-method').value = 'equal'; $('#usage-share').value = sample.usageShare;
-  $('#compare-label').value = 'Local disk'; $('#compare-energy').value = sample.compareEnergy;
-  $('#compare-unit').value = 'J'; $('#compare-tariff').value = '';
+  $('#gpu-energy').value = sample.gpu;
+  $('#gpu-unit').value = 'J';
+  $('#gpu-status').value = 'Illustrative estimate';
+  $('#component-total-details').open = false;
+  $('#component-total-input').value = '';
+  $('#component-total-unit').value = 'J';
+  $('#component-total-status').value = 'Illustrative estimate';
+  $('#compare-current-energy').value = sample.compareCurrent;
+  $('#compare-current-unit').value = 'J';
+  $('#compare-label').value = 'Local disk';
+  $('#compare-energy').value = sample.compareEnergy;
+  $('#compare-unit').value = 'J';
+  $('#compare-tariff').value = '';
+  $('#model').value = sample.model;
+  $('#dataset').value = sample.dataset;
+  $('#run-id').value = sample.runId;
+  $('#user').value = sample.user;
+  $('#gpu-count').value = sample.gpuCount;
+  $('#run-count').value = sample.runCount;
+  $('#epochs').value = sample.epochs;
+  $('#dataset-size').value = sample.datasetSize;
+  for (const phase of PHASES) {
+    $(`[data-phase="${phase.id}"]`).value = sample.phases[phase.id];
+    $(`[data-phase-unit="${phase.id}"]`).value = 'J';
+    $(`[data-phase-status="${phase.id}"]`).value = 'Illustrative estimate';
+  }
+  $('#allocation-enabled').checked = false;
+  $('#prep-energy').value = sample.prepEnergy;
+  $('#prep-unit').value = 'J';
+  $('#sharing-users').value = sample.sharingUsers;
+  $('#downloads').value = sample.downloads;
+  $('#allocation-method').value = 'equal';
+  $('#usage-share').value = sample.usageShare;
   render();
 }
 
