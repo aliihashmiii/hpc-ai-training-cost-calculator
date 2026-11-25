@@ -66,6 +66,22 @@ test('CPU/GPU mode emits separate component rows with their own modeled costs an
   assert.deepEqual(rows.map(row => row.x_EstimationStatus), ['Measured', 'Manual estimate']);
 });
 
+test('CPU/GPU mode retains an aggregate meter override as a distinct non-additive total row', () => {
+  const { input, result } = calculateBase({
+    mode: 'components', totalEnergy: 10, totalUnit: 'kWh', totalStatus: 'Measured',
+    cpuEnergy: 3_600_000, gpuEnergy: 7_200_000,
+  });
+  const rows = buildFocusRows(input, result, 'components');
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(row => row.x_RowPurpose), [
+    'Component breakdown only', 'Component breakdown only', 'Job total; do not add to component breakdown',
+  ]);
+  assert.equal(rows[2].x_ChargeComponent, 'Aggregate total meter');
+  assert.equal(rows[2].x_EstimatedElectricityCost, '3.24');
+  assert.equal(rows[2].x_EstimationStatus, 'Measured');
+  assert.match(rows[0].x_CalculationBasis, /separate aggregate meter/);
+});
+
 test('phase mode exports only entered phase rows and keeps each phase cost distinct', () => {
   const { input, result } = calculateBase({
     mode: 'phases', totalEnergy: '',

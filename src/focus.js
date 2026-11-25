@@ -39,6 +39,7 @@ export const FOCUS_ESTIMATE_HEADERS = [
   'x_ModelName',
   'x_NumberOfGraphicsProcessingUnits',
   'x_PowerUsageEffectiveness',
+  'x_RowPurpose',
   'x_ScenarioRole',
   'x_TrainingRunCount',
   'x_TrainingRunId',
@@ -50,7 +51,7 @@ export const FOCUS_HEADERS = [...FOCUS_CORE_HEADERS, ...FOCUS_ESTIMATE_HEADERS];
 const decimal = (value, digits = 6) => Number(value || 0).toFixed(digits);
 const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
 
-function makeEstimateRow(input, result, { description, component, energyKWh, cost, status, role = '', allocatedShare = '' }) {
+function makeEstimateRow(input, result, { description, component, energyKWh, cost, status, role = '', allocatedShare = '', rowPurpose = 'Estimate row', calculationBasis = result.measurementBasis }) {
   const row = Object.fromEntries(FOCUS_HEADERS.map(header => [header, '']));
   Object.assign(row, {
     BilledCost: '0',
@@ -64,7 +65,7 @@ function makeEstimateRow(input, result, { description, component, energyKWh, cos
     ServiceName: 'HPC AI training electricity estimate',
     x_AllocatedPreparationCostPerUser: allocatedShare === '' ? '' : decimal(allocatedShare, 2),
     x_AllocationMethod: input.allocationMethod || 'equal',
-    x_CalculationBasis: result.measurementBasis,
+    x_CalculationBasis: calculationBasis,
     x_CalculationMode: input.mode || 'total',
     x_ChargeComponent: component,
     x_DatasetName: input.dataset,
@@ -77,6 +78,7 @@ function makeEstimateRow(input, result, { description, component, energyKWh, cos
     x_ModelName: input.model,
     x_NumberOfGraphicsProcessingUnits: String(input.gpuCount),
     x_PowerUsageEffectiveness: decimal(result.pue, 2),
+    x_RowPurpose: rowPurpose,
     x_ScenarioRole: role,
     x_TrainingRunCount: String(input.runCount),
     x_TrainingRunId: input.runId,
@@ -89,14 +91,33 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
   const rows = [];
   const baseDescription = `${input.model} training electricity estimate`;
   if (mode === 'components') {
+    const hasAggregateMeter = input.totalEnergy !== '' && input.totalEnergy != null;
+    const componentBasis = hasAggregateMeter
+      ? 'CPU/GPU component details; job total uses the separate aggregate meter'
+      : result.measurementBasis;
     rows.push(makeEstimateRow(input, result, {
       description: `${baseDescription} — CPU`, component: 'CPU', energyKWh: result.cpuKWh,
       cost: result.cpuCost, status: input.cpuStatus,
+      rowPurpose: hasAggregateMeter ? 'Component breakdown only' : 'Component cost estimate',
+      calculationBasis: componentBasis,
     }));
     rows.push(makeEstimateRow(input, result, {
       description: `${baseDescription} — GPU`, component: 'GPU', energyKWh: result.gpuKWh,
       cost: result.gpuCost, status: input.gpuStatus,
+      rowPurpose: hasAggregateMeter ? 'Component breakdown only' : 'Component cost estimate',
+      calculationBasis: componentBasis,
     }));
+    if (hasAggregateMeter) {
+      rows.push(makeEstimateRow(input, result, {
+        description: `${baseDescription} — aggregate total meter`,
+        component: 'Aggregate total meter',
+        energyKWh: result.totalKWh,
+        cost: result.totalCost,
+        status: input.totalStatus,
+        role: 'Aggregate total',
+        rowPurpose: 'Job total; do not add to component breakdown',
+      }));
+    }
   } else if (mode === 'phases') {
     const activePhases = result.phaseRows.filter(phase => phase.energyKWh > 0);
     for (const phase of activePhases) {
@@ -106,6 +127,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
         energyKWh: phase.energyKWh,
         cost: phase.cost,
         status: phase.status,
+        rowPurpose: 'Phase cost estimate',
       }));
     }
   } else if (mode === 'compare') {
@@ -119,6 +141,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
       cost: currentKWh * result.pue * result.tariff,
       status: input.totalStatus,
       role: 'Current',
+      rowPurpose: 'Comparison scenario',
     }));
     rows.push(makeEstimateRow(input, result, {
       description: `${input.compareLabel} training electricity estimate`,
@@ -127,6 +150,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
       cost: alternativeKWh * result.pue * alternativeTariff,
       status: 'Manual estimate',
       role: 'Alternative',
+      rowPurpose: 'Comparison scenario',
     }));
   } else {
     rows.push(makeEstimateRow(input, result, {
@@ -136,6 +160,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
       cost: result.totalCost,
       status: input.totalStatus,
       role: 'Estimate',
+      rowPurpose: 'Job total estimate',
     }));
   }
 
@@ -148,6 +173,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
       status: 'Manual estimate',
       role: 'Separate allocation',
       allocatedShare: result.prepShare,
+      rowPurpose: 'Separate preparation estimate',
     }));
   }
 
@@ -159,6 +185,7 @@ export function buildFocusRows(input, result, mode = input.mode || 'total') {
       cost: 0,
       status: 'No energy entered',
       role: 'Estimate',
+      rowPurpose: 'No energy entered',
     }));
   }
   return rows;
