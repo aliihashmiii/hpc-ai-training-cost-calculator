@@ -1,0 +1,12 @@
+{
+  "name": "hpc-ai-training-cost-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Measured-energy electricity cost attribution for HPC AI training workloads",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "test": "node --test",
+    "check": "node --check src/main.js && node --check src/calc.js && node --test"
+  }
+}

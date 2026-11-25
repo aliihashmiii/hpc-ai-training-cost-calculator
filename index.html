@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#132a40" />
+  <meta name="description" content="An auditable HPC research calculator translating measured AI-training energy into electricity costs by phase, job, and user." />
+  <title>HPC AI Training Cost Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="HPC Cost Lab home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>HPC <b>COST LAB</b></span></a>
+    <div class="top-meta"><span class="live-dot"></span> ENERGY-BASED ATTRIBUTION <span class="meta-divider"></span> RESEARCH EDITION</div>
+    <button class="button button-light" id="reset-button" type="button" title="Restore the illustrative sample scenario">Reset scenario <span aria-hidden="true">↺</span></button>
+  </header>
+  <main id="top">
+    <section class="hero wrap">
+      <div class="eyebrow"><span class="eyebrow-line"></span> RESEARCH TOOL · HPC FINOPS</div>
+      <h1>HPC AI Training<br /><span>Cost Calculator</span></h1>
+      <p class="hero-copy">Turn measured energy into transparent electricity cost—by phase, training run and user. Time is not a proxy for energy.</p>
+      <div class="hero-note"><span class="note-icon">i</span><span>Built around energy attribution research · <em>Illustrative values are clearly identified</em></span></div>
+      <div class="hero-credit">CREATED BY <strong>Muhammad Ali Qureshi</strong><span>FinOps Certified Practitioner · Cloud GreenOps Philosopher · Author of <i>Cloud Money</i></span></div>
+    </section>
+
+    <section class="wrap summary-section" id="summary-section" aria-label="Calculated results">
+      <div class="section-kicker"><span>01</span><h2>Run summary</h2><span class="kicker-rule"></span><span class="live-label"><span class="live-dot"></span> LIVE CALCULATION</span></div>
+      <div class="summary-grid">
+        <article class="metric metric-primary"><div class="metric-label">TOTAL ELECTRICITY COST <span class="tip" title="Measured energy × PUE × tariff">i</span></div><div class="metric-value" id="total-cost">€0.00</div><div class="metric-foot" id="cost-context">For this training job</div><div class="metric-accent"></div></article>
+        <article class="metric"><div class="metric-label">FACILITY ENERGY</div><div class="metric-value" id="total-energy">0.000 <small>kWh</small></div><div class="metric-foot" id="energy-context">PUE-adjusted energy</div></article>
+        <article class="metric"><div class="metric-label">COST PER RUN</div><div class="metric-value" id="cost-per-run">€0.00</div><div class="metric-foot" id="runs-context">1 training run</div></article>
+        <article class="metric"><div class="metric-label">COST PER EPOCH</div><div class="metric-value" id="cost-per-epoch">€0.00</div><div class="metric-foot" id="epochs-context">20 epochs · estimated</div></article>
+      </div>
+    </section>
+
+    <div class="wrap workspace">
+      <aside class="input-column">
+        <div class="section-kicker input-heading"><span>02</span><h2>Scenario inputs</h2></div>
+        <p class="input-intro">Enter metered values where available. Every field is editable.</p>
+        <div class="validation-message" id="validation-message" role="alert" aria-live="polite" hidden></div>
+        <form id="calculator-form" novalidate>
+          <section class="form-panel">
+            <div class="panel-heading"><span class="panel-icon">⌁</span><div><h3>Infrastructure</h3><p>Facility &amp; energy measurements</p></div></div>
+            <div class="field-grid two-col">
+              <label class="field"><span>Electricity tariff</span><div class="input-unit"><input id="tariff" type="number" min="0" step="0.001" value="0.24" inputmode="decimal" /><span>€/kWh</span></div></label>
+              <label class="field"><span>Facility PUE <span class="tip" title="Power Usage Effectiveness: facility energy ÷ IT energy">i</span></span><div class="input-unit"><input id="pue" type="number" min="1" step="0.01" value="1.35" inputmode="decimal" /><span>×</span></div></label>
+              <label class="field"><span>CPU energy <span class="field-tag">MEASURED</span></span><div class="input-unit"><input id="cpu-energy" type="number" min="0" step="any" value="54000000" inputmode="decimal" /><select id="cpu-unit" aria-label="CPU energy unit"><option value="J">J</option><option value="kWh">kWh</option></select></div></label>
+              <label class="field"><span>GPU energy <span class="field-tag">MEASURED</span></span><div class="input-unit"><input id="gpu-energy" type="number" min="0" step="any" value="144000000" inputmode="decimal" /><select id="gpu-unit" aria-label="GPU energy unit"><option value="J">J</option><option value="kWh">kWh</option></select></div></label>
+              <label class="field field-wide"><span>Optional total energy measurement <span class="field-tag field-tag-est">OVERRIDE</span></span><div class="input-unit"><input id="total-energy-input" type="number" min="0" step="any" placeholder="Leave blank to use CPU + GPU" inputmode="decimal" /><select id="total-unit" aria-label="Total energy unit"><option value="J">J</option><option value="kWh">kWh</option></select></div><small>When supplied, this is the job-total cost basis.</small></label>
+            </div>
+          </section>
+          <section class="form-panel">
+            <div class="panel-heading"><span class="panel-icon">▤</span><div><h3>Training workload</h3><p>Job identity &amp; run parameters</p></div></div>
+            <div class="field-grid two-col">
+              <label class="field"><span>Model name</span><input id="model" type="text" value="ResNet-50" /></label>
+              <label class="field"><span>Dataset name</span><input id="dataset" type="text" value="ImageNet-1K" /></label>
+              <label class="field"><span>Training run ID</span><input id="run-id" type="text" value="resnet50-2025-001" /></label>
+              <label class="field"><span>User / team</span><input id="user" type="text" value="Research group" /></label>
+              <label class="field"><span>Number of GPUs</span><input id="gpu-count" type="number" min="1" step="1" value="4" inputmode="numeric" /></label>
+              <label class="field"><span>Training runs</span><input id="run-count" type="number" min="1" step="1" value="1" inputmode="numeric" /></label>
+              <label class="field"><span>Epochs per run</span><input id="epochs" type="number" min="1" step="1" value="20" inputmode="numeric" /></label>
+              <label class="field"><span>Dataset size</span><div class="input-unit"><input id="dataset-size" type="number" min="0" step="any" value="138" inputmode="decimal" /><span>GB</span></div></label>
+            </div>
+          </section>
+          <section class="form-panel phase-panel">
+            <div class="panel-heading"><span class="panel-icon">◷</span><div><h3>Energy by phase</h3><p>Phase measurements or manual estimates</p></div></div>
+            <div class="phase-guide"><span class="field-tag field-tag-est">ILLUSTRATIVE</span><span>Sample values shown in joules · choose unit per row</span></div>
+            <div class="phase-table-head"><span>Training phase</span><span>Energy input</span></div>
+            <div id="phase-inputs"></div>
+          </section>
+          <section class="form-panel allocation-panel">
+            <div class="panel-heading"><span class="panel-icon">⇢</span><div><h3>Shared dataset allocation</h3><p>Separate preparation from training cost</p></div></div>
+            <label class="toggle-row"><span><b>Include dataset preparation energy</b><small>Allocate preparation cost separately</small></span><input id="allocation-enabled" type="checkbox" checked /><i aria-hidden="true"></i></label>
+            <div class="field-grid two-col allocation-fields">
+              <label class="field"><span>Preparation energy</span><div class="input-unit"><input id="prep-energy" type="number" min="0" step="any" value="36000000" inputmode="decimal" /><select id="prep-unit" aria-label="Preparation energy unit"><option value="J">J</option><option value="kWh">kWh</option></select></div></label>
+              <label class="field"><span>Sharing users</span><input id="sharing-users" type="number" min="1" step="1" value="6" inputmode="numeric" /></label>
+              <label class="field"><span>Dataset downloads</span><input id="downloads" type="number" min="1" step="1" value="12" inputmode="numeric" /></label>
+              <label class="field"><span>Allocation method</span><select id="allocation-method"><option value="equal">Equal per user</option><option value="usage">By dataset usage</option><option value="owner">Full cost to owner</option></select></label>
+              <label class="field field-wide" id="usage-share-field" hidden><span>This user's dataset usage share</span><div class="input-unit"><input id="usage-share" type="number" min="0" max="100" step="1" value="20" /><span>%</span></div></label>
+            </div>
+            <div class="allocation-result"><span>Allocated prep cost per user</span><strong id="allocation-cost">€0.00</strong></div>
+          </section>
+          <section class="form-panel compare-panel">
+            <div class="panel-heading"><span class="panel-icon">⇄</span><div><h3>Configuration comparison</h3><p>Model another storage or training scenario</p></div></div>
+            <label class="field"><span>Compare current run against</span><select id="compare-label"><option value="Local disk">Local disk</option><option value="Lustre">Lustre</option><option value="Checkpointing disabled">Checkpointing disabled</option><option value="Alternative model">Alternative model</option></select></label>
+            <div class="field-grid two-col compare-fields"><label class="field"><span>Alternative energy</span><div class="input-unit"><input id="compare-energy" type="number" min="0" step="any" value="180000000" /><select id="compare-unit" aria-label="Alternative energy unit"><option value="J">J</option><option value="kWh">kWh</option></select></div></label><label class="field"><span>Alternative tariff</span><div class="input-unit"><input id="compare-tariff" type="number" min="0" step="0.001" placeholder="Use current tariff" /><span>€/kWh</span></div></label></div>
+          </section>
+        </form>
+      </aside>
+
+      <section class="results-column" aria-label="Detailed results">
+        <article class="result-card energy-card">
+          <div class="result-card-head"><div><div class="section-kicker"><span>03</span><h2>Energy profile</h2></div><p class="card-subtitle">Measured components and phase attribution</p></div><span class="unit-badge">kWh · IT ENERGY</span></div>
+          <div class="energy-profile"><div class="donut-wrap"><svg id="energy-donut" viewBox="0 0 160 160" role="img" aria-label="CPU and GPU energy split"><circle class="donut-track" cx="80" cy="80" r="59"></circle><circle class="donut-cpu" cx="80" cy="80" r="59"></circle><circle class="donut-gpu" cx="80" cy="80" r="59"></circle></svg><div class="donut-center"><b id="it-energy">0.000</b><span>IT kWh</span></div></div><div class="energy-legend"><div><i class="legend-dot cpu-dot"></i><span>CPU energy</span><b id="cpu-display">0.000 kWh</b></div><div><i class="legend-dot gpu-dot"></i><span>GPU energy</span><b id="gpu-display">0.000 kWh</b></div><div class="legend-total"><span>Facility energy (PUE)</span><b id="facility-display">0.000 kWh</b></div></div></div>
+          <div class="measurement-note"><span class="note-icon">i</span><span id="measurement-note-text">Energy input status updates here.</span></div>
+        </article>
+        <article class="result-card phase-card">
+          <div class="result-card-head"><div><div class="section-kicker"><span>04</span><h2>Cost by phase</h2></div><p class="card-subtitle">Electricity cost attributed to each stage</p></div><span class="unit-badge">EUR · COST</span></div>
+          <div id="phase-chart" class="bar-chart" role="img" aria-label="Electricity cost by training phase"></div>
+          <div class="phase-callout"><span class="callout-mark">↗</span><div><b id="largest-phase">—</b><span id="largest-phase-note">Largest energy-consuming phase</span></div><strong id="largest-phase-cost">€0.00</strong></div>
+          <div class="table-wrap"><table><thead><tr><th>Training phase</th><th>Energy (kWh)</th><th>Cost (EUR)</th><th>Data status</th></tr></thead><tbody id="phase-table-body"></tbody></table></div>
+        </article>
+        <article class="result-card comparison-card">
+          <div class="result-card-head"><div><div class="section-kicker"><span>05</span><h2>Scenario comparison</h2></div><p class="card-subtitle">Same tariff &amp; PUE unless overridden</p></div><span class="unit-badge">CURRENT VS ALTERNATIVE</span></div>
+          <div class="comparison-content"><div class="compare-scenario"><span class="scenario-label">CURRENT CONFIGURATION</span><b id="current-label">ResNet-50 · ImageNet-1K</b><div class="compare-value" id="current-compare-cost">€0.00</div><div class="compare-meta" id="current-compare-energy">0.000 kWh measured / attributed</div></div><div class="compare-vs">VS</div><div class="compare-scenario compare-alt"><span class="scenario-label">ALTERNATIVE</span><b id="alternative-label">Local disk</b><div class="compare-value" id="alternative-compare-cost">€0.00</div><div class="compare-meta" id="alternative-compare-energy">0.000 kWh alternate energy</div></div></div>
+          <div class="comparison-delta" id="comparison-delta">Enter energy inputs to compare electricity cost.</div>
+        </article>
+        <article class="result-card allocation-result-card">
+          <div class="result-card-head"><div><div class="section-kicker"><span>06</span><h2>Cost attribution</h2></div><p class="card-subtitle">Training, preparation and ownership kept distinct</p></div></div>
+          <div class="attribution-grid"><div><span>CPU electricity cost</span><b id="cpu-cost">€0.00</b></div><div><span>GPU electricity cost</span><b id="gpu-cost">€0.00</b></div><div><span>Dataset preparation · total</span><b id="prep-total-cost">€0.00</b></div><div><span>Dataset prep · this user</span><b id="prep-user-cost">€0.00</b></div><div><span>Dataset prep · per download</span><b id="prep-download-cost">€0.00</b></div><div><span>Training cost · this user/team</span><b id="training-user-cost">€0.00</b></div><div><span>Cost per GPU</span><b id="per-gpu-cost">€0.00</b></div></div>
+          <div class="allocation-explainer" id="allocation-explainer">Preparation is separate from training electricity cost.</div>
+        </article>
+        <div class="results-actions"><div><span class="export-mark">↓</span><div><b>FOCUS-compatible research export</b><small>Not an officially validated FOCUS dataset</small></div></div><button id="export-button" class="button button-primary" type="button">Download CSV <span aria-hidden="true">↓</span></button></div>
+        <p class="methodology"><b>Method</b> · Energy (kWh) = joules ÷ 3,600,000. Electricity cost = IT energy × PUE × tariff. Phase entries use directly measured or manually entered energy; elapsed time is never used as a substitute. Values prefilled in the sample are illustrative.</p>
+      </section>
+    </div>
+  </main>
+  <footer class="footer"><div class="footer-inner"><span>HPC COST LAB <span class="footer-dot">/</span> RESEARCH &amp; FINOPS</span><span>Developed by Muhammad Ali Qureshi | FinOps Certified Practitioner | Author of Cloud Money</span><a href="#top">Back to top ↑</a></div><div class="footer-study">A practical implementation of energy attribution research for AI training workloads in high-performance computing.</div></footer>
+</body>
+</html>
